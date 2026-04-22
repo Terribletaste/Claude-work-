@@ -106,6 +106,22 @@ def detect_ongoing(full_text):
     return False
 
 
+PHOTO_CREDIT_RE = re.compile(
+    r"^\s*(?:"
+    r"cast\s+photo|"
+    r"photo(?:graph)?\s*(?:by|credit|:|courtesy\s+of)|"
+    r"image\s*(?:by|credit|:|courtesy\s+of)|"
+    r"courtesy\s+of|"
+    r"pictured\s*(?:above|below|:)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def is_photo_credit(text):
+    return bool(PHOTO_CREDIT_RE.match(text or ""))
+
+
 def extract_venue(full_text):
     """Best-effort venue extraction. Returns None when nothing plausible is found."""
     m = re.search(r"@\s*([A-Z][A-Za-z0-9'&\-\. ]{2,60}?)(?=[.,;)\n])", full_text)
@@ -196,6 +212,8 @@ def parse_document(path):
             current["source_lines"].append(text)
         else:
             if current_date is None:
+                continue
+            if is_photo_credit(text):
                 continue
             start_event(text)
 
