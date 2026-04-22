@@ -64,7 +64,12 @@ def parse_heading_date(text):
 
 def clean_title(raw):
     """Extract a clean ~80-char title from the first line of an event."""
-    line = raw.strip().splitlines()[0] if raw.strip() else ""
+    lines = [l for l in raw.strip().splitlines() if l.strip()]
+    line = lines[0] if lines else ""
+    # If the first line is a presenter prefix ("X presents"), use the second
+    # line as the title instead.
+    if PRESENTER_PREFIX_RE.search(line.strip()) and len(lines) >= 2:
+        line = lines[1]
     line = re.sub(r"^\s*sponsored\s*::\s*", "", line, flags=re.IGNORECASE)
     line = re.sub(
         r"^\s*\((?:thru|through|until)\s+[^)]+\)\s*:\s*",
@@ -122,6 +127,149 @@ def is_photo_credit(text):
     return bool(PHOTO_CREDIT_RE.match(text or ""))
 
 
+URL_ONLY_RE = re.compile(r"^\s*https?://\S+\s*$", re.IGNORECASE)
+EMAIL_ONLY_RE = re.compile(r"^\s*[\w.+-]+@[\w-]+\.[\w.-]+\s*$")
+DIVIDER_RE = re.compile(r"^\s*[-=_*~]{6,}\s*$")
+TRAILING_LINK_RE = re.compile(r"\s+link\s*[.!?]?\s*$", re.IGNORECASE)
+PRESENTER_PREFIX_RE = re.compile(
+    r"(?:presents|presented\s+by|co-presents?|in\s+association\s+with)\s*[:.]?\s*$",
+    re.IGNORECASE,
+)
+STOPWORDS = {
+    "a", "an", "the", "of", "in", "on", "at", "to", "and", "or",
+    "but", "for", "with", "by", "as", "is", "from", "vs", "vs.",
+}
+LIST_PARA_DATE_PREFIX_RE = re.compile(
+    r"^\s*\(?\s*(\d{1,2})/(\d{1,2})\b[^a-z]*?:",
+    re.IGNORECASE,
+)
+
+
+def is_url_only(text):
+    return bool(URL_ONLY_RE.match(text or ""))
+
+
+def is_email_only(text):
+    return bool(EMAIL_ONLY_RE.match(text or ""))
+
+
+def is_divider(text):
+    return bool(DIVIDER_RE.match(text or ""))
+
+
+def is_presenter_prefix(text):
+    return bool(PRESENTER_PREFIX_RE.search((text or "").strip()))
+
+
+def ends_with_link_token(text):
+    return bool(TRAILING_LINK_RE.search((text or "").rstrip()))
+
+
+def strip_trailing_link(text):
+    return TRAILING_LINK_RE.sub("", text or "").rstrip()
+
+
+def looks_like_headline(text):
+    t = (text or "").strip()
+    if not t or len(t) > 120:
+        return False
+    letters = [c for c in t if c.isalpha()]
+    if not letters:
+        return False
+    # Mostly lowercase => definitely not a headline (Ryan's convention)
+    upper_letters = sum(1 for c in letters if c.isupper())
+    if upper_letters / len(letters) < 0.25:
+        return False
+    # All-caps headline
+    if t == t.upper():
+        return True
+    # Title Case: majority of significant words start uppercase
+    words = re.findall(r"[A-Za-z][A-Za-z']*", t)
+    significant = [w for w in words if w.lower() not in STOPWORDS]
+    if len(significant) < 2:
+        return False
+    title_words = sum(1 for w in significant if w[0].isupper())
+    return title_words / len(significant) >= 0.7
+
+
+def is_featured_headline_start(records, i):
+    """Does records[i] start a new featured (non-List-Paragraph) event?
+
+    Signature: preceded by blank, is a Title Case / all-caps short line,
+    followed by blank, then a substantial prose paragraph. Rejects venue
+    lines because those are followed by short 'Continues' / URL / nothing.
+    """
+    rec = records[i]
+    if rec["style_lower"] != "normal" or rec["blank"]:
+        return False
+    if not looks_like_headline(rec["text"]):
+        return False
+    prev = records[i - 1] if i > 0 else None
+    if prev is None or not prev["blank"]:
+        return False
+    if i + 2 >= len(records):
+        return False
+    if not records[i + 1]["blank"]:
+        return False
+    nxt = records[i + 2]
+    if nxt["style_lower"] != "normal" or nxt["blank"]:
+        return False
+    nxt_text = nxt["text"].strip()
+    if is_url_only(nxt_text) or is_email_only(nxt_text) or is_divider(nxt_text):
+        return False
+    if len(nxt_text) < 40:
+        return False
+    # Real descriptions start with a letter, not a digit, symbol, or time marker.
+    if not nxt_text[0].isalpha():
+        return False
+    # Two Title Case short lines in a row = venue + "Continues" style section
+    if looks_like_headline(nxt_text) and len(nxt_text) < 40:
+        return False
+    return True
+
+
+def is_section_header(records, i):
+    """Short standalone paragraph followed by a List Paragraph is a
+    section header, not an event."""
+    rec = records[i]
+    text = rec["text"].strip()
+    if len(text) == 0 or len(text) > 60:
+        return False
+    # Must be mostly lowercase (Ryan's section labels are lowercase)
+    letters = [c for c in text if c.isalpha()]
+    if not letters:
+        return False
+    upper_ratio = sum(1 for c in letters if c.isupper()) / len(letters)
+    if upper_ratio > 0.2:
+        return False
+    # Look forward past blanks for the next styled paragraph
+    j = i + 1
+    while j < len(records) and records[j]["blank"]:
+        j += 1
+    if j >= len(records):
+        return False
+    return records[j]["style_lower"] == "list paragraph"
+
+
+def override_date_from_prefix(text, fallback_date):
+    """If list-paragraph title starts with 'M/D,' or 'M/D ', override date.
+
+    Only applies when the prefix resolves to a valid date within +/- 60 days
+    of fallback_date (preventing misreads of random numbers)."""
+    m = LIST_PARA_DATE_PREFIX_RE.match(text or "")
+    if not m:
+        return fallback_date
+    month, day = int(m.group(1)), int(m.group(2))
+    try:
+        candidate = date(fallback_date.year, month, day)
+    except ValueError:
+        return fallback_date
+    delta = abs((candidate - fallback_date).days)
+    if delta > 60:
+        return fallback_date
+    return candidate
+
+
 def extract_venue(full_text):
     """Best-effort venue extraction. Returns None when nothing plausible is found."""
     m = re.search(r"@\s*([A-Z][A-Za-z0-9'&\-\. ]{2,60}?)(?=[.,;)\n])", full_text)
@@ -150,6 +298,17 @@ def derive_description(full_text):
 
 def parse_document(path):
     doc = Document(str(path))
+    records = []
+    for p in doc.paragraphs:
+        text = (p.text or "").rstrip()
+        style = paragraph_style(p)
+        records.append({
+            "text": text,
+            "style": style,
+            "style_lower": style.lower(),
+            "blank": not text.strip(),
+        })
+
     current_date = None
     events = []
     current = None
@@ -169,19 +328,18 @@ def parse_document(path):
         current = None
         current_saw_link = False
 
-    def start_event(text):
+    def start_event(text, event_date):
         nonlocal current, current_saw_link
         current = {
-            "date": current_date.isoformat(),
-            "day_of_week": DAY_NAMES[current_date.weekday()],
+            "date": event_date.isoformat(),
+            "day_of_week": DAY_NAMES[event_date.weekday()],
             "source_lines": [text],
         }
         current_saw_link = False
 
-    for p in doc.paragraphs:
-        text = (p.text or "").strip()
-        style = paragraph_style(p)
-        style_lower = style.lower()
+    for i, rec in enumerate(records):
+        text = rec["text"].strip()
+        style_lower = rec["style_lower"]
 
         if style_lower.startswith("heading 1"):
             finalize()
@@ -190,7 +348,7 @@ def parse_document(path):
                 current_date = d
             continue
 
-        if not text:
+        if rec["blank"]:
             if current is not None and current_saw_link:
                 finalize()
             continue
@@ -199,14 +357,44 @@ def parse_document(path):
             finalize()
             if current_date is None:
                 continue
-            start_event(text)
+            event_date = override_date_from_prefix(text, current_date)
+            start_event(text, event_date)
             continue
 
-        # Normal / other body paragraphs
+        # Normal / other body paragraphs.
+        # Handle the "link" terminator in both standalone and inline forms.
         if text.lower() == "link":
             if current is not None:
                 current_saw_link = True
             continue
+        if ends_with_link_token(text):
+            cleaned = strip_trailing_link(text)
+            if current is not None:
+                if cleaned:
+                    current["source_lines"].append(cleaned)
+                current_saw_link = True
+            continue
+
+        # URL / email / divider paragraphs act as close signals between events.
+        if is_url_only(text) or is_email_only(text) or is_divider(text):
+            if current is not None:
+                current_saw_link = True
+            continue
+
+        # Section headers ("earth day related events", "420-themed events")
+        # close the current event and are not themselves events.
+        if is_section_header(records, i):
+            finalize()
+            continue
+
+        # If we're inside an event and this paragraph looks like a new
+        # featured-event headline, close the current event first — unless
+        # the current event is just a presenter prefix ("X presents"), in
+        # which case the new headline IS this event's title.
+        if current is not None and is_featured_headline_start(records, i):
+            only_line = current["source_lines"][0] if len(current["source_lines"]) == 1 else None
+            if not (only_line is not None and is_presenter_prefix(only_line)):
+                finalize()
 
         if current is not None:
             current["source_lines"].append(text)
@@ -215,7 +403,7 @@ def parse_document(path):
                 continue
             if is_photo_credit(text):
                 continue
-            start_event(text)
+            start_event(text, current_date)
 
     finalize()
     return events
@@ -253,6 +441,20 @@ def assign_ids(events, weekend_idx):
     return out
 
 
+def dedupe_events(events):
+    """Drop events with the same (normalized title, date). Source docs
+    sometimes reprint the same bullet in two places."""
+    seen = set()
+    out = []
+    for e in events:
+        key = (e["date"], re.sub(r"\s+", " ", (e.get("title") or "")).strip().lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(e)
+    return out
+
+
 def group_into_weekends(events):
     """Group events into Fri/Sat/Sun weekends.
 
@@ -261,6 +463,8 @@ def group_into_weekends(events):
     """
     if not events:
         return []
+
+    events = dedupe_events(events)
 
     by_date = {}
     for e in events:
