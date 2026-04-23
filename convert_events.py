@@ -176,9 +176,10 @@ def looks_like_headline(text):
     letters = [c for c in t if c.isalpha()]
     if not letters:
         return False
-    # Mostly lowercase => definitely not a headline (Ryan's convention)
-    upper_letters = sum(1 for c in letters if c.isupper())
-    if upper_letters / len(letters) < 0.25:
+    # Ryan's lowercase events start with a lowercase letter; rejecting that
+    # alone distinguishes them from Title Case / all-caps featured headlines.
+    first_alpha = next((c for c in t if c.isalpha()), "")
+    if first_alpha and not first_alpha.isupper():
         return False
     # All-caps headline
     if t == t.upper():
@@ -190,6 +191,34 @@ def looks_like_headline(text):
         return False
     title_words = sum(1 for w in significant if w[0].isupper())
     return title_words / len(significant) >= 0.7
+
+
+RYAN_STYLE_START_RE = re.compile(
+    r"^\s*\(?\s*(?:"
+    r"(?:thru|through|until)\s+(?:\d{1,2}/\d{1,2}|[A-Za-z]+\s+\d)|"
+    r"\d{1,2}/\d{1,2}(?:\s*[-–]\s*\d{1,2}/\d{1,2})?\s*[:,]|"
+    r"sponsored\s*[:.]"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def is_ryan_style_start(text):
+    """A lowercase 'thru 8/31:', 'M/D:', 'sponsored:' etc. prefix marks the
+    start of a Ryan-style event even when the paragraph style is Normal."""
+    return bool(RYAN_STYLE_START_RE.match(text or ""))
+
+
+LOWERCASE_COLON_TITLE_RE = re.compile(r"^[a-z][\w' +\-&/]{0,40}:\s\S")
+
+
+def is_lowercase_colon_title(text):
+    """A 'lowercase-name: content' pattern (e.g. 'indieplaza: rough trade...',
+    'five miles of vhs tape: gibson + recoder: ...'). Used as a secondary
+    signal for Ryan-style event starts that lack a 'thru'/'M/D:'/'sponsored:'
+    prefix. Match is case-sensitive — description labels like 'Featuring:' or
+    'Artists:' start uppercase and won't trigger."""
+    return bool(LOWERCASE_COLON_TITLE_RE.match(text or ""))
 
 
 def is_featured_headline_start(records, i):
@@ -395,6 +424,26 @@ def parse_document(path):
             only_line = current["source_lines"][0] if len(current["source_lines"]) == 1 else None
             if not (only_line is not None and is_presenter_prefix(only_line)):
                 finalize()
+
+        # A Ryan-style lowercase event start ("thru 8/31: ...", "sponsored: ...")
+        # can appear inside a Normal-styled block and should close the current
+        # event even though it has no List Paragraph style.
+        if current is not None and is_ryan_style_start(text):
+            finalize()
+
+        # A 'lowercase-name: content' paragraph preceded by blank, appearing
+        # deep inside the current event's body (>= 6 source lines), is very
+        # likely a Normal-styled Ryan event whose boundary wasn't marked by a
+        # `link` or URL. Gated on prior blank + event-length to avoid
+        # misfiring on legitimate description labels.
+        if (
+            current is not None
+            and len(current["source_lines"]) >= 6
+            and is_lowercase_colon_title(text)
+            and i > 0
+            and records[i - 1]["blank"]
+        ):
+            finalize()
 
         if current is not None:
             current["source_lines"].append(text)
