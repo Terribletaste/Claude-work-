@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+
+# Local parser test artifacts (source docs live on a different branch;
+# generated JSON is reproducible via `python convert_events.py`).
+NYC_Events_*.docx
+events_*.json
