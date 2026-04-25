@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NYC Event Ranker</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --must-fg: #22c55e; --must-bg: #f0fdf4;
+    --want-fg: #3b82f6; --want-bg: #eff6ff;
+    --can-fg:  #eab308; --can-bg:  #fefce8;
+    --cut-fg:  #9ca3af; --cut-bg:  #f3f4f6;
+    --fri: #6366f1; --sat: #10b981; --sun: #f59e0b;
+    --ink: #111827; --muted: #6b7280; --line: #e5e7eb;
+    --bg: #f9fafb; --card: #ffffff;
+    --radius: 10px;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 1px 3px rgba(0,0,0,.06);
+  }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); background: var(--bg); line-height: 1.45;
+    min-height: 100vh; padding: 24px 16px 80px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 { font-size: 18px; margin: 24px 0 10px; letter-spacing: -.005em; }
+  p  { margin: 0 0 12px; color: var(--ink); }
+  small, .muted { color: var(--muted); font-size: 13px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .header .sub { color: var(--muted); font-size: 14px; margin-top: 2px; }
+
+  .btn {
+    display: inline-block; cursor: pointer; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink);
+    padding: 9px 14px; border-radius: 8px; font-size: 14px; font-weight: 500;
+    transition: background .12s, border-color .12s, transform .04s;
+  }
+  .btn:hover { background: #f3f4f6; }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.primary { background: var(--ink); color: white; border-color: var(--ink); }
+  .btn.primary:hover { background: #000; }
+  .btn.primary:disabled { background: #9ca3af; border-color: #9ca3af; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+
+  .file-load-wrap {
+    background: var(--card); border: 1px dashed var(--line);
+    padding: 36px 20px; border-radius: var(--radius); text-align: center;
+  }
+  .file-load-wrap input[type=file] { display: block; margin: 14px auto 0; }
+  .error { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca;
+           padding: 10px 12px; border-radius: 8px; margin-top: 12px; font-size: 14px; }
+
+  .weekend-grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
+  @media (min-width: 640px) { .weekend-grid { grid-template-columns: 1fr 1fr; } }
+  .weekend-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px; cursor: pointer; box-shadow: var(--shadow);
+    transition: border-color .12s, transform .04s;
+    text-align: left; width: 100%; font: inherit; color: inherit;
+  }
+  .weekend-card:hover { border-color: #9ca3af; }
+  .weekend-card:active { transform: translateY(1px); }
+  .weekend-card .label { font-weight: 600; }
+  .weekend-card .count { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .weekend-card .done-mark { color: var(--must-fg); font-size: 13px; margin-top: 6px; }
+
+  .ranking-list { display: flex; flex-direction: column; gap: 8px; }
+  .event-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 12px; box-shadow: var(--shadow);
+    display: grid; grid-template-columns: 36px 28px 1fr; gap: 10px; align-items: start;
+    transition: border-color .12s, box-shadow .12s, opacity .12s;
+  }
+  .event-card.dragging { opacity: .35; }
+  .event-card.drop-above { border-top: 2px solid var(--ink); }
+  .event-card.drop-below { border-bottom: 2px solid var(--ink); }
+  .drag-handle {
+    cursor: grab; user-select: none; touch-action: none;
+    color: var(--muted); font-size: 18px; line-height: 1;
+    height: 100%; display: flex; align-items: center; justify-content: center;
+    padding: 4px;
+  }
+  .drag-handle:active { cursor: grabbing; }
+  .rank-num {
+    background: var(--ink); color: white; width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600;
+  }
+  .event-body { min-width: 0; }
+  .event-title { font-weight: 600; font-size: 15px; margin: 0 0 6px; word-break: break-word; }
+  .event-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13px; color: var(--muted); }
+  .venue { color: var(--muted); }
+  .day-pill {
+    color: white; font-size: 11px; font-weight: 600; letter-spacing: .02em;
+    padding: 2px 8px; border-radius: 999px; text-transform: uppercase;
+  }
+  .day-pill.friday   { background: var(--fri); }
+  .day-pill.saturday { background: var(--sat); }
+  .day-pill.sunday   { background: var(--sun); }
+  .ongoing-badge {
+    background: #eef2ff; color: #4338ca; font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 999px; letter-spacing: .02em;
+  }
+  .desc-toggle {
+    background: none; border: none; padding: 0; margin-top: 6px; cursor: pointer;
+    color: #2563eb; font: inherit; font-size: 13px;
+  }
+  .desc-toggle:hover { text-decoration: underline; }
+  .description { margin-top: 8px; font-size: 14px; color: #374151; white-space: pre-wrap; }
+
+  .tier-badge {
+    font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 999px; border: 1px solid transparent;
+  }
+  .tier-badge.must-go    { color: var(--must-fg); background: var(--must-bg); border-color: var(--must-fg); }
+  .tier-badge.want-to-go { color: var(--want-fg); background: var(--want-bg); border-color: var(--want-fg); }
+  .tier-badge.can-go     { color: var(--can-fg);  background: var(--can-bg);  border-color: var(--can-fg);  }
+  .tier-badge.cut        { color: var(--cut-fg);  background: var(--cut-bg);  border-color: var(--cut-fg);  }
+
+  .dropdowns {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 14px; margin-bottom: 14px; box-shadow: var(--shadow);
+    display: grid; gap: 10px;
+  }
+  @media (min-width: 640px) { .dropdowns { grid-template-columns: 1fr 1fr 1fr; } }
+  .dropdown-cell label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .dropdown-cell select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: white; font: inherit; font-size: 14px;
+  }
+  .dropdown-cell.must-go    label::before { content: "● "; color: var(--must-fg); }
+  .dropdown-cell.want-to-go label::before { content: "● "; color: var(--want-fg); }
+  .dropdown-cell.can-go     label::before { content: "● "; color: var(--can-fg);  }
+
+  .tier-section { border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px; border: 1px solid; }
+  .tier-section.must-go    { background: var(--must-bg); border-color: var(--must-fg); }
+  .tier-section.want-to-go { background: var(--want-bg); border-color: var(--want-fg); }
+  .tier-section.can-go     { background: var(--can-bg);  border-color: var(--can-fg);  }
+  .tier-section.cut        { background: var(--cut-bg);  border-color: var(--cut-fg);  }
+  .tier-section h3 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: .04em; }
+  .tier-section.must-go    h3 { color: var(--must-fg); }
+  .tier-section.want-to-go h3 { color: var(--want-fg); }
+  .tier-section.can-go     h3 { color: #a16207; }
+  .tier-section.cut        h3 { color: #4b5563; }
+  .tier-section ol { margin: 0; padding-left: 22px; }
+  .tier-section li { margin: 2px 0; font-size: 14px; }
+  .tier-section .empty { color: var(--muted); font-style: italic; font-size: 13px; }
+
+  .sticky-actions {
+    position: sticky; bottom: 0; background: var(--bg);
+    padding-top: 12px; margin-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+
+  .session-note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div id="app" class="container"></div>
+<script>
+"use strict";
+
+const TIER_KEYS = ["must-go", "want-to-go", "can-go", "cut"];
+const TIER_LABEL = {
+  "must-go": "Must Go",
+  "want-to-go": "Want to Go",
+  "can-go": "Can Go",
+  "cut": "Cut"
+};
+const DAY_ORDER = { Friday: 0, Saturday: 1, Sunday: 2 };
+
+const state = {
+  screen: "fileLoad",
+  data: null,
+  fileError: "",
+  currentWeekendIndex: -1,
+  rankedEvents: [],
+  cutoffs: { must: null, want: null, can: null },
+  allResults: [],
+  rankedWeekendIndices: new Set()
+};
+
+const root = () => document.getElementById("app");
+
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+function h(tag, attrs, children) {
+  const el = document.createElement(tag);
+  if (attrs) {
+    for (const k in attrs) {
+      const v = attrs[k];
+      if (v == null || v === false) continue;
+      if (k === "class") el.className = v;
+      else if (k === "style" && typeof v === "object") Object.assign(el.style, v);
+      else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2), v);
+      else if (k === "html") el.innerHTML = v;
+      else el.setAttribute(k, v);
+    }
+  }
+  if (children != null) {
+    const arr = Array.isArray(children) ? children : [children];
+    for (const c of arr) {
+      if (c == null || c === false) continue;
+      el.appendChild(typeof c === "string" || typeof c === "number" ? document.createTextNode(String(c)) : c);
+    }
+  }
+  return el;
+}
+
+function csvEscape(v) {
+  if (v == null) return "";
+  const s = String(v);
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function todayIso() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+}
+
+function weekendDatesSlug(weekend) {
+  if (weekend.dates && weekend.dates.length) {
+    const first = weekend.dates[0];
+    const last = weekend.dates[weekend.dates.length - 1];
+    return first === last ? first : first + "_to_" + last;
+  }
+  return (weekend.label || "weekend").replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "");
+}
+
+function chronoSort(events) {
+  return events.slice().sort((a, b) => {
+    const da = a.date || "";
+    const db = b.date || "";
+    if (da !== db) return da < db ? -1 : 1;
+    const oa = DAY_ORDER[a.day_of_week] != null ? DAY_ORDER[a.day_of_week] : 9;
+    const ob = DAY_ORDER[b.day_of_week] != null ? DAY_ORDER[b.day_of_week] : 9;
+    if (oa !== ob) return oa - ob;
+    return (a.title || "").localeCompare(b.title || "");
+  });
+}
+
+function dayClass(day) {
+  if (!day) return "";
+  return day.toLowerCase();
+}
+
+function goto(screen) {
+  state.screen = screen;
+  render();
+  window.scrollTo(0, 0);
+}
+
+function render() {
+  const r = root();
+  clear(r);
+  switch (state.screen) {
+    case "fileLoad":      r.appendChild(renderFileLoad()); break;
+    case "weekendSelect": r.appendChild(renderWeekendSelect()); break;
+    case "ranking":       r.appendChild(renderRanking()); break;
+    case "tiering":       r.appendChild(renderTiering()); break;
+    case "summary":       r.appendChild(renderSummary()); break;
+    default: r.appendChild(renderFileLoad());
+  }
+}
+
+// --- Screen 1: file load ---
+function renderFileLoad() {
+  const wrap = h("div");
+  wrap.appendChild(h("div", { class: "header" }, [
+    h("div", null, [
+      h("h1", null, "NYC Event Ranker"),
+      h("div", { class: "sub" }, "Load an events_[month].json file to start ranking.")
+    ])
+  ]));
+  const box = h("div", { class: "file-load-wrap" }, [
+    h("p", null, "Choose a JSON file produced by convert_events.py."),
+    h("input", {
+      type: "file",
+      accept: ".json,application/json",
+      onchange: e => handleFile(e.target.files && e.target.files[0])
+    })
+  ]);
+  if (state.fileError) box.appendChild(h("div", { class: "error" }, state.fileError));
+  wrap.appendChild(box);
+  return wrap;
+}
+
+function handleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      validateData(parsed);
+      state.data = parsed;
+      state.fileError = "";
+      state.allResults = [];
+      state.rankedWeekendIndices = new Set();
+      goto("weekendSelect");
+    } catch (err) {
+      state.fileError = "Could not load file: " + err.message;
+      render();
+    }
+  };
+  reader.onerror = () => {
+    state.fileError = "Could not read file.";
+    render();
+  };
+  reader.readAsText(file);
+}
+
+function validateData(d) {
+  if (!d || typeof d !== "object") throw new Error("not an object");
+  if (typeof d.month !== "string") throw new Error("missing 'month' string");
+  if (!Array.isArray(d.weekends) || d.weekends.length === 0) throw new Error("missing 'weekends' array");
+  for (const w of d.weekends) {
+    if (typeof w.label !== "string") throw new Error("weekend missing 'label'");
+    if (!Array.isArray(w.events)) throw new Error("weekend missing 'events' array");
+  }
+}
+
+// --- Screen 2: weekend select ---
+function renderWeekendSelect() {
+  const wrap = h("div");
+  wrap.appendChild(h("div", { class: "header" }, [
+    h("div", null, [
+      h("h1", null, state.data.month),
+      h("div", { class: "sub" }, "Pick a weekend to rank.")
+    ]),
+    h("div", null, [
+      h("button", { class: "btn", onclick: () => goto("fileLoad") }, "Load different file")
+    ])
+  ]));
+
+  const grid = h("div", { class: "weekend-grid" });
+  state.data.weekends.forEach((w, idx) => {
+    const card = h("button", {
+      class: "weekend-card",
+      onclick: () => startRanking(idx)
+    }, [
+      h("div", { class: "label" }, w.label),
+      h("div", { class: "count" }, w.events.length + " events"),
+      state.rankedWeekendIndices.has(idx) ? h("div", { class: "done-mark" }, "✓ ranked this session") : null
+    ]);
+    grid.appendChild(card);
+  });
+  wrap.appendChild(grid);
+
+  if (state.allResults.length > 0) {
+    wrap.appendChild(h("div", { class: "btn-row" }, [
+      h("button", { class: "btn primary", onclick: downloadCsv }, "Download CSV (" + state.allResults.length + " weekend" + (state.allResults.length === 1 ? "" : "s") + ")")
+    ]));
+    wrap.appendChild(h("div", { class: "session-note" }, "CSV accumulates everything you've ranked this session."));
+  }
+  return wrap;
+}
+
+function startRanking(idx) {
+  state.currentWeekendIndex = idx;
+  state.rankedEvents = chronoSort(state.data.weekends[idx].events);
+  state.cutoffs = { must: null, want: null, can: null };
+  goto("ranking");
+}
+
+// --- Screen 3: drag ranking ---
+function renderRanking() {
+  const wknd = state.data.weekends[state.currentWeekendIndex];
+  const wrap = h("div");
+  wrap.appendChild(h("div", { class: "header" }, [
+    h("div", null, [
+      h("h1", null, "Rank — " + wknd.label),
+      h("div", { class: "sub" }, "Drag to reorder. Top = highest priority.")
+    ]),
+    h("div", null, [
+      h("button", { class: "btn", onclick: () => goto("weekendSelect") }, "← Back")
+    ])
+  ]));
+
+  const list = h("div", { class: "ranking-list", id: "ranking-list" });
+  state.rankedEvents.forEach((ev, i) => list.appendChild(renderEventCard(ev, i + 1, true)));
+  wrap.appendChild(list);
+
+  attachListDragHandlers(list);
+
+  wrap.appendChild(h("div", { class: "sticky-actions btn-row" }, [
+    h("button", { class: "btn primary", onclick: () => goto("tiering") }, "Done ranking →")
+  ]));
+  return wrap;
+}
+
+function renderEventCard(ev, rank, draggable, tierKey) {
+  const dayCls = dayClass(ev.day_of_week);
+  const meta = h("div", { class: "event-meta" });
+  if (ev.day_of_week) meta.appendChild(h("span", { class: "day-pill " + dayCls }, ev.day_of_week));
+  if (ev.venue) meta.appendChild(h("span", { class: "venue" }, ev.venue));
+  if (ev.ongoing) meta.appendChild(h("span", { class: "ongoing-badge" }, "ongoing"));
+  if (tierKey) meta.appendChild(h("span", { class: "tier-badge " + tierKey }, TIER_LABEL[tierKey]));
+
+  const body = h("div", { class: "event-body" }, [
+    h("div", { class: "event-title" }, ev.title || "(untitled)"),
+    meta
+  ]);
+
+  if (ev.description) {
+    const descNode = h("div", { class: "description", style: { display: "none" } }, ev.description);
+    const toggle = h("button", { class: "desc-toggle", onclick: () => {
+      const open = descNode.style.display !== "none";
+      descNode.style.display = open ? "none" : "block";
+      toggle.textContent = open ? "Show description" : "Hide description";
+    }}, "Show description");
+    body.appendChild(toggle);
+    body.appendChild(descNode);
+  }
+
+  const card = h("div", {
+    class: "event-card",
+    "data-id": ev.id || ("idx-" + rank),
+    "data-rank": rank,
+    draggable: draggable ? "true" : null
+  }, [
+    draggable ? h("div", { class: "drag-handle", "aria-label": "Drag" }, "⋮⋮") : h("div"),
+    h("div", { class: "rank-num" }, rank),
+    body
+  ]);
+  return card;
+}
+
+// --- drag & drop ---
+function attachListDragHandlers(list) {
+  let dragSrc = null;
+
+  function clearMarkers() {
+    list.querySelectorAll(".drop-above, .drop-below").forEach(c => c.classList.remove("drop-above", "drop-below"));
+  }
+
+  list.addEventListener("dragstart", e => {
+    const card = e.target.closest(".event-card");
+    if (!card) return;
+    dragSrc = card;
+    card.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", card.getAttribute("data-id") || ""); } catch (_) {}
+  });
+
+  list.addEventListener("dragover", e => {
+    if (!dragSrc) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const target = e.target.closest(".event-card");
+    if (!target || target === dragSrc) { clearMarkers(); return; }
+    const rect = target.getBoundingClientRect();
+    const before = e.clientY < rect.top + rect.height / 2;
+    clearMarkers();
+    target.classList.add(before ? "drop-above" : "drop-below");
+  });
+
+  list.addEventListener("dragleave", e => {
+    const card = e.target.closest && e.target.closest(".event-card");
+    if (card) card.classList.remove("drop-above", "drop-below");
+  });
+
+  list.addEventListener("drop", e => {
+    e.preventDefault();
+    if (!dragSrc) return;
+    const target = e.target.closest(".event-card");
+    if (target && target !== dragSrc) {
+      const rect = target.getBoundingClientRect();
+      const before = e.clientY < rect.top + rect.height / 2;
+      reorderByCardIds(dragSrc, target, before);
+    }
+    clearMarkers();
+  });
+
+  list.addEventListener("dragend", () => {
+    if (dragSrc) dragSrc.classList.remove("dragging");
+    dragSrc = null;
+    clearMarkers();
+  });
+
+  // Touch fallback (mobile) — start only when finger goes down on .drag-handle.
+  let touchSrc = null;
+  let touchHover = null;
+
+  list.addEventListener("touchstart", e => {
+    const handle = e.target.closest && e.target.closest(".drag-handle");
+    if (!handle) return;
+    const card = handle.closest(".event-card");
+    if (!card) return;
+    touchSrc = card;
+    card.classList.add("dragging");
+  }, { passive: true });
+
+  list.addEventListener("touchmove", e => {
+    if (!touchSrc) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    const under = document.elementFromPoint(t.clientX, t.clientY);
+    const card = under && under.closest && under.closest(".event-card");
+    if (touchHover && touchHover !== card) touchHover.classList.remove("drop-above", "drop-below");
+    if (!card || card === touchSrc) { touchHover = null; return; }
+    const rect = card.getBoundingClientRect();
+    const before = t.clientY < rect.top + rect.height / 2;
+    card.classList.remove("drop-above", "drop-below");
+    card.classList.add(before ? "drop-above" : "drop-below");
+    touchHover = card;
+  }, { passive: false });
+
+  list.addEventListener("touchend", () => {
+    if (!touchSrc) return;
+    if (touchHover && touchHover !== touchSrc) {
+      const before = touchHover.classList.contains("drop-above");
+      reorderByCardIds(touchSrc, touchHover, before);
+    }
+    touchSrc.classList.remove("dragging");
+    if (touchHover) touchHover.classList.remove("drop-above", "drop-below");
+    touchSrc = null;
+    touchHover = null;
+  });
+
+  list.addEventListener("touchcancel", () => {
+    if (touchSrc) touchSrc.classList.remove("dragging");
+    if (touchHover) touchHover.classList.remove("drop-above", "drop-below");
+    touchSrc = null;
+    touchHover = null;
+  });
+}
+
+function reorderByCardIds(srcCard, targetCard, before) {
+  const srcId = srcCard.getAttribute("data-id");
+  const tgtId = targetCard.getAttribute("data-id");
+  const arr = state.rankedEvents;
+  const fromIdx = arr.findIndex(e => (e.id || ("idx-" + (arr.indexOf(e) + 1))) === srcId);
+  let toIdx = arr.findIndex(e => (e.id || ("idx-" + (arr.indexOf(e) + 1))) === tgtId);
+  if (fromIdx < 0 || toIdx < 0) return;
+  const [moved] = arr.splice(fromIdx, 1);
+  if (fromIdx < toIdx) toIdx -= 1;
+  const insertAt = before ? toIdx : toIdx + 1;
+  arr.splice(insertAt, 0, moved);
+  render();
+}
+
+// --- Screen 4: tiering ---
+function renderTiering() {
+  const wknd = state.data.weekends[state.currentWeekendIndex];
+  const wrap = h("div");
+  wrap.appendChild(h("div", { class: "header" }, [
+    h("div", null, [
+      h("h1", null, "Tier — " + wknd.label),
+      h("div", { class: "sub" }, "Set the cutoff rank for each tier. Anything below Can Go is Cut.")
+    ]),
+    h("div", null, [
+      h("button", { class: "btn", onclick: () => goto("ranking") }, "← Back to ranking")
+    ])
+  ]));
+
+  wrap.appendChild(renderDropdowns());
+
+  const list = h("div", { class: "ranking-list", id: "tier-list" });
+  state.rankedEvents.forEach((ev, i) => {
+    const tier = computeTierFor(i + 1, state.cutoffs);
+    list.appendChild(renderEventCard(ev, i + 1, false, tier));
+  });
+  wrap.appendChild(list);
+
+  wrap.appendChild(h("div", { class: "sticky-actions btn-row" }, [
+    h("button", { class: "btn primary", onclick: finishTiering }, "Done tiering →")
+  ]));
+  return wrap;
+}
+
+function renderDropdowns() {
+  const n = state.rankedEvents.length;
+  const wrap = h("div", { class: "dropdowns" });
+
+  function buildSelect(key, lo, hi, current, onChange) {
+    const sel = h("select");
+    sel.appendChild(h("option", { value: "" }, "None"));
+    for (let r = lo; r <= hi; r++) {
+      const ev = state.rankedEvents[r - 1];
+      const title = ev && ev.title ? ev.title : "Rank " + r;
+      const truncated = title.length > 60 ? title.slice(0, 57) + "…" : title;
+      const opt = h("option", { value: String(r) }, "Rank " + r + " — " + truncated);
+      if (current === r) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.addEventListener("change", e => {
+      const v = e.target.value === "" ? null : parseInt(e.target.value, 10);
+      onChange(v);
+    });
+    return sel;
+  }
+
+  const must = state.cutoffs.must;
+  const want = state.cutoffs.want;
+  const can  = state.cutoffs.can;
+
+  wrap.appendChild(h("div", { class: "dropdown-cell must-go" }, [
+    h("label", null, "Must Go ends at"),
+    buildSelect("must", 1, n, must, v => {
+      state.cutoffs.must = v;
+      if (v != null) {
+        if (state.cutoffs.want != null && state.cutoffs.want <= v) state.cutoffs.want = null;
+        if (state.cutoffs.can  != null && state.cutoffs.can  <= v) state.cutoffs.can  = null;
+      }
+      render();
+    })
+  ]));
+
+  const wantLo = (must != null ? must + 1 : 1);
+  wrap.appendChild(h("div", { class: "dropdown-cell want-to-go" }, [
+    h("label", null, "Want to Go ends at"),
+    wantLo > n
+      ? h("select", { disabled: true }, [h("option", null, "None")])
+      : buildSelect("want", wantLo, n, want, v => {
+          state.cutoffs.want = v;
+          if (v != null && state.cutoffs.can != null && state.cutoffs.can <= v) state.cutoffs.can = null;
+          render();
+        })
+  ]));
+
+  const canLo = (want != null ? want + 1 : (must != null ? must + 1 : 1));
+  wrap.appendChild(h("div", { class: "dropdown-cell can-go" }, [
+    h("label", null, "Can Go ends at"),
+    canLo > n
+      ? h("select", { disabled: true }, [h("option", null, "None")])
+      : buildSelect("can", canLo, n, can, v => { state.cutoffs.can = v; render(); })
+  ]));
+
+  return wrap;
+}
+
+function computeTierFor(rank, cutoffs) {
+  if (cutoffs.must != null && rank <= cutoffs.must) return "must-go";
+  if (cutoffs.want != null && rank <= cutoffs.want) return "want-to-go";
+  if (cutoffs.can  != null && rank <= cutoffs.can)  return "can-go";
+  return "cut";
+}
+
+function finishTiering() {
+  const wknd = state.data.weekends[state.currentWeekendIndex];
+  const idx = state.currentWeekendIndex;
+
+  // Replace any prior result for this weekend, then append fresh.
+  state.allResults = state.allResults.filter(r => r.weekendIndex !== idx);
+  state.allResults.push({
+    weekendIndex: idx,
+    weekendLabel: wknd.label,
+    weekendDates: wknd.dates || [],
+    month: state.data.month,
+    rankedEvents: state.rankedEvents.map((ev, i) => ({
+      rank: i + 1,
+      tier: computeTierFor(i + 1, state.cutoffs),
+      title: ev.title || "",
+      day: ev.day_of_week || "",
+      venue: ev.venue || "",
+      date: ev.date || "",
+      ongoing: !!ev.ongoing
+    })),
+    dateRanked: todayIso()
+  });
+  state.rankedWeekendIndices.add(idx);
+  goto("summary");
+}
+
+// --- Screen 5: summary + CSV ---
+function renderSummary() {
+  const result = state.allResults[state.allResults.length - 1];
+  const wrap = h("div");
+  wrap.appendChild(h("div", { class: "header" }, [
+    h("div", null, [
+      h("h1", null, "Summary — " + result.weekendLabel),
+      h("div", { class: "sub" }, "Ranked " + todayIso() + ".")
+    ])
+  ]));
+
+  const groups = { "must-go": [], "want-to-go": [], "can-go": [], "cut": [] };
+  for (const r of result.rankedEvents) groups[r.tier].push(r);
+
+  for (const k of TIER_KEYS) {
+    const sec = h("div", { class: "tier-section " + k });
+    sec.appendChild(h("h3", null, TIER_LABEL[k] + " (" + groups[k].length + ")"));
+    if (groups[k].length === 0) {
+      sec.appendChild(h("div", { class: "empty" }, "— none —"));
+    } else {
+      const ol = h("ol");
+      ol.setAttribute("start", String(groups[k][0].rank));
+      // List shows actual rank numbers as plain text instead of <ol value=>
+      // so non-contiguous tiers still show the right rank.
+      for (const r of groups[k]) {
+        ol.appendChild(h("li", { value: String(r.rank) }, [
+          (r.day ? r.day + " · " : "") + r.title
+        ]));
+      }
+      sec.appendChild(ol);
+    }
+    wrap.appendChild(sec);
+  }
+
+  wrap.appendChild(h("div", { class: "btn-row" }, [
+    h("button", { class: "btn primary", onclick: downloadCsv }, "Download CSV"),
+    h("button", { class: "btn", onclick: () => goto("weekendSelect") }, "Rank another weekend"),
+    h("button", { class: "btn", onclick: () => goto("tiering") }, "← Edit tiers")
+  ]));
+  wrap.appendChild(h("div", { class: "session-note" }, "CSV includes all " + state.allResults.length + " weekend" + (state.allResults.length === 1 ? "" : "s") + " ranked this session."));
+  return wrap;
+}
+
+function buildCsvRows(results) {
+  const header = ["month", "weekend_dates", "rank", "event_name", "day", "venue", "tier", "date_ranked"];
+  const rows = [header.join(",")];
+  for (const r of results) {
+    const datesStr = (r.weekendDates && r.weekendDates.length)
+      ? (r.weekendDates[0] + (r.weekendDates.length > 1 ? "_to_" + r.weekendDates[r.weekendDates.length - 1] : ""))
+      : r.weekendLabel;
+    for (const ev of r.rankedEvents) {
+      rows.push([
+        csvEscape(r.month),
+        csvEscape(datesStr),
+        csvEscape(ev.rank),
+        csvEscape(ev.title),
+        csvEscape(ev.day),
+        csvEscape(ev.venue),
+        csvEscape(TIER_LABEL[ev.tier]),
+        csvEscape(r.dateRanked)
+      ].join(","));
+    }
+  }
+  return rows.join("\r\n");
+}
+
+function downloadCsv() {
+  if (state.allResults.length === 0) return;
+  const csv = buildCsvRows(state.allResults);
+  // Filename uses the most recent weekend's dates.
+  const last = state.allResults[state.allResults.length - 1];
+  const slug = (last.weekendDates && last.weekendDates.length)
+    ? (last.weekendDates[0] + (last.weekendDates.length > 1 ? "_to_" + last.weekendDates[last.weekendDates.length - 1] : ""))
+    : weekendDatesSlug({ label: last.weekendLabel });
+  const filename = "NYC_Events_Log_" + slug + ".csv";
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+// Expose hooks for headless tests.
+window.__ranker = { state, render, handleFile, buildCsvRows, computeTierFor, chronoSort, goto };
+
+render();
+</script>
+</body>
+</html>
