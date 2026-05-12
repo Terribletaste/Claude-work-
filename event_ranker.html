@@ -176,6 +176,7 @@ const state = {
   screen: "fileLoad",
   data: null,
   fileError: "",
+  fileLoading: false,
   currentWeekendIndex: -1,
   rankedEvents: [],
   cutoffs: { must: null, want: null, can: null },
@@ -274,16 +275,18 @@ function renderFileLoad() {
   wrap.appendChild(h("div", { class: "header" }, [
     h("div", null, [
       h("h1", null, "NYC Event Ranker"),
-      h("div", { class: "sub" }, "Load an events_[month].json file to start ranking.")
+      h("div", { class: "sub" }, "Upload a Word doc (.docx) — or drop in a previously-converted .json — to start ranking.")
     ])
   ]));
   const box = h("div", { class: "file-load-wrap" }, [
-    h("p", null, "Choose a JSON file produced by convert_events.py."),
+    h("p", null, "Choose a NYC events Word doc, or a JSON file produced by convert_events.py."),
     h("input", {
       type: "file",
-      accept: ".json,application/json",
+      accept: ".docx,.json,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/json",
       onchange: e => handleFile(e.target.files && e.target.files[0])
-    })
+    }),
+    h("div", { class: "muted", style: { marginTop: "10px" } }, "Word docs are converted on the server (1–3 seconds for the first request)."),
+    state.fileLoading ? h("div", { class: "muted", style: { marginTop: "12px" } }, "Converting…") : null
   ]);
   if (state.fileError) box.appendChild(h("div", { class: "error" }, state.fileError));
   wrap.appendChild(box);
@@ -292,26 +295,71 @@ function renderFileLoad() {
 
 function handleFile(file) {
   if (!file) return;
+  const name = (file.name || "").toLowerCase();
+  if (name.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    handleDocxFile(file);
+  } else {
+    handleJsonFile(file);
+  }
+}
+
+function handleJsonFile(file) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
       const parsed = JSON.parse(reader.result);
-      validateData(parsed);
-      state.data = parsed;
-      state.fileError = "";
-      state.allResults = [];
-      state.rankedWeekendIndices = new Set();
-      goto("weekendSelect");
+      acceptParsedData(parsed);
     } catch (err) {
       state.fileError = "Could not load file: " + err.message;
+      state.fileLoading = false;
       render();
     }
   };
   reader.onerror = () => {
     state.fileError = "Could not read file.";
+    state.fileLoading = false;
     render();
   };
   reader.readAsText(file);
+}
+
+function handleDocxFile(file) {
+  state.fileLoading = true;
+  state.fileError = "";
+  render();
+
+  file.arrayBuffer().then(buf =>
+    fetch("/api/convert", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Filename": file.name || "upload.docx"
+      },
+      body: buf
+    })
+  ).then(async res => {
+    const body = await res.text();
+    let parsed;
+    try { parsed = JSON.parse(body); } catch (_) {
+      throw new Error("server returned invalid JSON (status " + res.status + ")");
+    }
+    if (!res.ok) throw new Error(parsed.error || ("conversion failed (status " + res.status + ")"));
+    acceptParsedData(parsed);
+  }).catch(err => {
+    state.fileError = "Could not convert file: " + err.message;
+    state.fileLoading = false;
+    render();
+  });
+}
+
+function acceptParsedData(parsed) {
+  validateData(parsed);
+  state.data = parsed;
+  state.fileError = "";
+  state.fileLoading = false;
+  state.allResults = [];
+  state.rankedWeekendIndices = new Set();
+  goto("weekendSelect");
 }
 
 function validateData(d) {
