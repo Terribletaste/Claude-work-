@@ -1,5 +1,8 @@
 {
-  "cleanUrls": false,
+  "framework": null,
+  "buildCommand": null,
+  "installCommand": null,
+  "outputDirectory": ".",
   "rewrites": [
     { "source": "/", "destination": "/event_ranker.html" }
   ]

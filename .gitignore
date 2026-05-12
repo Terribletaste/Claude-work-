@@ -5,3 +5,4 @@ __pycache__/
 # generated JSON is reproducible via `python convert_events.py`).
 NYC_Events_*.docx
 events_*.json
+.vercel
