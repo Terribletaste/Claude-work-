@@ -54,6 +54,28 @@
   .error { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca;
            padding: 10px 12px; border-radius: 8px; margin-top: 12px; font-size: 14px; }
 
+  .saved-files { margin-bottom: 18px; }
+  .saved-files h2 { margin-bottom: 8px; }
+  .saved-file-row {
+    display: flex; align-items: stretch; gap: 8px; margin-bottom: 8px;
+  }
+  .saved-file-open {
+    flex: 1; text-align: left; background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 12px 14px; cursor: pointer;
+    font: inherit; color: inherit; box-shadow: var(--shadow);
+    transition: border-color .12s, transform .04s;
+  }
+  .saved-file-open:hover { border-color: #9ca3af; }
+  .saved-file-open:active { transform: translateY(1px); }
+  .saved-file-name { font-weight: 600; word-break: break-word; }
+  .saved-file-meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .saved-file-remove {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    color: var(--muted); cursor: pointer; padding: 0 14px; font: inherit;
+    font-size: 22px; line-height: 1;
+  }
+  .saved-file-remove:hover { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
+
   .weekend-grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
   @media (min-width: 640px) { .weekend-grid { grid-template-columns: 1fr 1fr; } }
   .weekend-card {
@@ -181,8 +203,61 @@ const state = {
   rankedEvents: [],
   cutoffs: { must: null, want: null, can: null },
   allResults: [],
-  rankedWeekendIndices: new Set()
+  rankedWeekendIndices: new Set(),
+  savedFiles: []
 };
+
+const STORAGE_KEY = "nyc_event_ranker_v1";
+
+function loadSavedFiles() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.files)) return [];
+    return parsed.files;
+  } catch (_) {
+    return [];
+  }
+}
+
+function persistSavedFiles() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ files: state.savedFiles }));
+  } catch (err) {
+    state.fileError = "Could not save to browser storage: " + err.message;
+  }
+}
+
+function saveFile(filename, data) {
+  const now = new Date().toISOString();
+  const existing = state.savedFiles.findIndex(f => f.filename === filename);
+  const entry = {
+    id: filename + "::" + now,
+    filename: filename,
+    month: data.month || "(unknown month)",
+    uploadedAt: now,
+    weekendCount: Array.isArray(data.weekends) ? data.weekends.length : 0,
+    eventCount: Array.isArray(data.weekends)
+      ? data.weekends.reduce((n, w) => n + (Array.isArray(w.events) ? w.events.length : 0), 0)
+      : 0,
+    data: data
+  };
+  if (existing >= 0) state.savedFiles[existing] = entry;
+  else state.savedFiles.unshift(entry);
+  persistSavedFiles();
+}
+
+function removeSavedFile(id) {
+  state.savedFiles = state.savedFiles.filter(f => f.id !== id);
+  persistSavedFiles();
+}
+
+function openSavedFile(id) {
+  const entry = state.savedFiles.find(f => f.id === id);
+  if (!entry) return;
+  acceptParsedData(entry.data);
+}
 
 const root = () => document.getElementById("app");
 
@@ -275,11 +350,21 @@ function renderFileLoad() {
   wrap.appendChild(h("div", { class: "header" }, [
     h("div", null, [
       h("h1", null, "NYC Event Ranker"),
-      h("div", { class: "sub" }, "Upload a Word doc (.docx) — or drop in a previously-converted .json — to start ranking.")
+      h("div", { class: "sub" }, "Upload a Word doc (.docx) — or drop in a previously-converted .json — to start ranking. Uploads are remembered in this browser.")
     ])
   ]));
+
+  if (state.savedFiles.length > 0) {
+    const lib = h("div", { class: "saved-files" });
+    lib.appendChild(h("h2", null, "Saved files"));
+    for (const f of state.savedFiles) lib.appendChild(renderSavedFileRow(f));
+    wrap.appendChild(lib);
+  }
+
   const box = h("div", { class: "file-load-wrap" }, [
-    h("p", null, "Choose a NYC events Word doc, or a JSON file produced by convert_events.py."),
+    h("p", null, state.savedFiles.length > 0
+      ? "Add another month, or replace one by uploading the same filename again."
+      : "Choose a NYC events Word doc, or a JSON file produced by convert_events.py."),
     h("input", {
       type: "file",
       accept: ".docx,.json,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/json",
@@ -291,6 +376,36 @@ function renderFileLoad() {
   if (state.fileError) box.appendChild(h("div", { class: "error" }, state.fileError));
   wrap.appendChild(box);
   return wrap;
+}
+
+function renderSavedFileRow(f) {
+  const dt = new Date(f.uploadedAt);
+  const when = isNaN(dt) ? f.uploadedAt : dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return h("div", { class: "saved-file-row" }, [
+    h("button", {
+      class: "saved-file-open",
+      onclick: () => openSavedFile(f.id),
+      title: "Open " + f.filename
+    }, [
+      h("div", { class: "saved-file-name" }, f.filename),
+      h("div", { class: "saved-file-meta" },
+        f.month + " · " + f.weekendCount + " weekend" + (f.weekendCount === 1 ? "" : "s") +
+        " · " + f.eventCount + " event" + (f.eventCount === 1 ? "" : "s") +
+        " · uploaded " + when)
+    ]),
+    h("button", {
+      class: "saved-file-remove",
+      onclick: e => {
+        e.stopPropagation();
+        if (confirm("Remove \"" + f.filename + "\" from saved files?")) {
+          removeSavedFile(f.id);
+          render();
+        }
+      },
+      title: "Remove from saved files",
+      "aria-label": "Remove"
+    }, "×")
+  ]);
 }
 
 function handleFile(file) {
@@ -308,6 +423,8 @@ function handleJsonFile(file) {
   reader.onload = () => {
     try {
       const parsed = JSON.parse(reader.result);
+      validateData(parsed);
+      saveFile(file.name || ("upload-" + Date.now() + ".json"), parsed);
       acceptParsedData(parsed);
     } catch (err) {
       state.fileError = "Could not load file: " + err.message;
@@ -344,6 +461,8 @@ function handleDocxFile(file) {
       throw new Error("server returned invalid JSON (status " + res.status + ")");
     }
     if (!res.ok) throw new Error(parsed.error || ("conversion failed (status " + res.status + ")"));
+    validateData(parsed);
+    saveFile(file.name || ("upload-" + Date.now() + ".docx"), parsed);
     acceptParsedData(parsed);
   }).catch(err => {
     state.fileError = "Could not convert file: " + err.message;
@@ -803,8 +922,9 @@ function downloadCsv() {
 }
 
 // Expose hooks for headless tests.
-window.__ranker = { state, render, handleFile, buildCsvRows, computeTierFor, chronoSort, goto };
+window.__ranker = { state, render, handleFile, buildCsvRows, computeTierFor, chronoSort, goto, saveFile, removeSavedFile };
 
+state.savedFiles = loadSavedFiles();
 render();
 </script>
 </body>
