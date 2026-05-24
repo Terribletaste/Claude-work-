@@ -114,7 +114,6 @@
   .event-body { min-width: 0; }
   .event-title { font-weight: 600; font-size: 15px; margin: 0 0 6px; word-break: break-word; }
   .event-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13px; color: var(--muted); }
-  .venue { color: var(--muted); }
   .day-pill {
     color: white; font-size: 11px; font-weight: 600; letter-spacing: .02em;
     padding: 2px 8px; border-radius: 999px; text-transform: uppercase;
@@ -564,7 +563,6 @@ function renderEventCard(ev, rank, draggable, tierKey) {
   const dayCls = dayClass(ev.day_of_week);
   const meta = h("div", { class: "event-meta" });
   if (ev.day_of_week) meta.appendChild(h("span", { class: "day-pill " + dayCls }, ev.day_of_week));
-  if (ev.venue) meta.appendChild(h("span", { class: "venue" }, ev.venue));
   if (ev.ongoing) meta.appendChild(h("span", { class: "ongoing-badge" }, "ongoing"));
   if (tierKey) meta.appendChild(h("span", { class: "tier-badge " + tierKey }, TIER_LABEL[tierKey]));
 
@@ -824,7 +822,6 @@ function finishTiering() {
       tier: computeTierFor(i + 1, state.cutoffs),
       title: ev.title || "",
       day: ev.day_of_week || "",
-      venue: ev.venue || "",
       date: ev.date || "",
       ongoing: !!ev.ongoing
     })),
@@ -878,7 +875,7 @@ function renderSummary() {
 }
 
 function buildCsvRows(results) {
-  const header = ["month", "weekend_dates", "rank", "event_name", "day", "venue", "tier", "date_ranked"];
+  const header = ["month", "weekend_dates", "rank", "event_name", "day", "tier", "date_ranked"];
   const rows = [header.join(",")];
   for (const r of results) {
     const datesStr = (r.weekendDates && r.weekendDates.length)
@@ -891,7 +888,6 @@ function buildCsvRows(results) {
         csvEscape(ev.rank),
         csvEscape(ev.title),
         csvEscape(ev.day),
-        csvEscape(ev.venue),
         csvEscape(TIER_LABEL[ev.tier]),
         csvEscape(r.dateRanked)
       ].join(","));

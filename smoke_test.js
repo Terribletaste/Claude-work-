@@ -108,10 +108,10 @@ function assert(cond, msg) {
   // CSV content via buildCsvRows hook.
   const csvText = await page.evaluate(() => window.__ranker.buildCsvRows(window.__ranker.state.allResults));
   const lines = csvText.split("\r\n");
-  assert(lines[0] === "month,weekend_dates,rank,event_name,day,venue,tier,date_ranked", "csv header matches spec");
+  assert(lines[0] === "month,weekend_dates,rank,event_name,day,tier,date_ranked", "csv header matches spec");
   assert(lines.length > 1, "csv has data rows");
   const cols = lines[1].split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
-  assert(cols.length === 8, "csv row has 8 columns");
+  assert(cols.length === 7, "csv row has 7 columns");
 
   // Multi-weekend accumulation: rank weekend 2 too.
   await page.click("text=Rank another weekend");

@@ -62,36 +62,50 @@ def parse_heading_date(text):
         return None
 
 
-def clean_title(raw):
-    """Extract a clean ~80-char title from the first line of an event."""
-    lines = [l for l in raw.strip().splitlines() if l.strip()]
-    line = lines[0] if lines else ""
-    # If the first line is a presenter prefix ("X presents"), use the second
-    # line as the title instead.
-    if PRESENTER_PREFIX_RE.search(line.strip()) and len(lines) >= 2:
-        line = lines[1]
-    line = re.sub(r"^\s*sponsored\s*::\s*", "", line, flags=re.IGNORECASE)
-    line = re.sub(
-        r"^\s*\((?:thru|through|until)\s+[^)]+\)\s*:\s*",
-        "", line, flags=re.IGNORECASE,
-    )
-    line = re.sub(
-        r"^\s*\(?\s*(?:thru|through|until)\s+\d{1,2}/\d{1,2}(?:/\d{2,4})?\s*\)?\s*:\s*",
-        "", line, flags=re.IGNORECASE,
-    )
-    line = re.sub(
-        r"^\s*\(?\s*(?:thru|through|until)\s+[A-Za-z]+\s+\d{1,2}(?:,\s*\d{4})?\s*\)?\s*:\s*",
-        "", line, flags=re.IGNORECASE,
-    )
-    line = re.sub(r"^\s*\d{1,2}/\d{1,2}(?:[-–]\d{1,2}/\d{1,2})?\s*:\s*", "", line)
-    line = line.strip()
-    if len(line) > 80:
-        cut = line[:80]
-        sp = cut.rfind(" ")
-        if sp > 40:
-            cut = cut[:sp]
-        line = cut.rstrip(",;:-—– ") + "…"
-    return line
+LEADING_PREFIX_RES = [
+    re.compile(r"^\s*sponsored\s*::?\s*", re.IGNORECASE),               # sponsored::
+    re.compile(r"^\s*\([^)]*\)\s*:\s*"),                                # (thru 10/26):  (+ other dates tba):
+    re.compile(r"^\s*(?:thru|through|until)\b[^:]*?:\s*", re.IGNORECASE),  # thru:  thru 8/31:  through April 5:
+    re.compile(r"^\s*\d{1,2}/\d{1,2}(?:[-–]\d{1,2}/\d{1,2})?\s*:\s*"),  # 4/5:  4/5-4/6:
+]
+
+
+def strip_leading_prefix(text):
+    """Remove leading date/sponsor prefixes like '(thru 10/26):' or 'thru 8/31:'."""
+    prev = None
+    while text != prev:
+        prev = text
+        for rx in LEADING_PREFIX_RES:
+            text = rx.sub("", text, count=1)
+    return text.strip()
+
+
+def join_wrapped(raw):
+    """Collapse the doc's hard line-wraps into one string plus the raw line list."""
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    joined = re.sub(r"\s{2,}", " ", " ".join(lines)).strip()
+    return joined, lines
+
+
+def split_event(raw):
+    """Split an event block into (name, description).
+
+    Events in the source read like '[date prefix]: NAME: description...', wrapped
+    across several paragraphs. We rejoin the wrapped lines, drop any leading date
+    prefix, then split the name from the description on the first colon.
+    """
+    joined, lines = join_wrapped(raw)
+    body = strip_leading_prefix(joined)
+    idx = body.find(":")
+    if idx != -1:
+        name = body[:idx].strip(" .,;—–-")
+        desc = body[idx + 1:].strip()
+        if name:
+            return name, desc
+    # No usable colon: fall back to the first physical line as the name.
+    name = strip_leading_prefix(lines[0]) if lines else ""
+    desc = " ".join(lines[1:]).strip() if len(lines) > 1 else ""
+    return name, desc
 
 
 def detect_ongoing(full_text):
@@ -299,30 +313,11 @@ def override_date_from_prefix(text, fallback_date):
     return candidate
 
 
-def extract_venue(full_text):
-    """Best-effort venue extraction. Returns None when nothing plausible is found."""
-    m = re.search(r"@\s*([A-Z][A-Za-z0-9'&\-\. ]{2,60}?)(?=[.,;)\n])", full_text)
-    if m:
-        return m.group(1).strip().rstrip(".")
-    m = re.search(r"\bat\s+([A-Z][A-Za-z0-9'&\-\. ]{2,60}?)(?=[.,;)\n])", full_text)
-    if m:
-        return m.group(1).strip().rstrip(".")
-    return None
-
-
 def paragraph_style(p):
     try:
         return (p.style.name or "").strip()
     except Exception:
         return ""
-
-
-def derive_description(full_text):
-    """Return everything after the first non-empty line, trimmed."""
-    lines = [l for l in full_text.splitlines() if l.strip()]
-    if len(lines) <= 1:
-        return ""
-    return "\n".join(lines[1:]).strip()
 
 
 def parse_document(path):
@@ -349,9 +344,9 @@ def parse_document(path):
             return
         full = "\n".join(current["source_lines"]).strip()
         current["full_text"] = full
-        current["title"] = clean_title(full)
-        current["description"] = derive_description(full)
-        current["venue"] = extract_venue(full)
+        name, desc = split_event(full)
+        current["title"] = name
+        current["description"] = desc
         current["ongoing"] = detect_ongoing(full)
         events.append(current)
         current = None
@@ -483,7 +478,6 @@ def assign_ids(events, weekend_idx):
             "title": e["title"],
             "date": e["date"],
             "day_of_week": e["day_of_week"],
-            "venue": e.get("venue"),
             "description": e.get("description", ""),
             "ongoing": bool(e.get("ongoing", False)),
         })
