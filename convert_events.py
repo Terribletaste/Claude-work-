@@ -87,21 +87,48 @@ def join_wrapped(raw):
     return joined, lines
 
 
-def split_event(raw):
+def split_on_colon(text):
+    """Split 'name: description' on the first colon. Returns (name, desc) or None."""
+    idx = text.find(":")
+    if idx == -1:
+        return None
+    name = text[:idx].strip(" .,;—–-")
+    desc = text[idx + 1:].strip()
+    if not name:
+        return None
+    return name, desc
+
+
+def split_event(raw, head_end=None):
     """Split an event block into (name, description).
 
-    Events in the source read like '[date prefix]: NAME: description...', wrapped
-    across several paragraphs. We rejoin the wrapped lines, drop any leading date
-    prefix, then split the name from the description on the first colon.
+    Lowercase newsletter events read like '[date prefix]: NAME: description...'
+    wrapped across paragraphs — we rejoin the wraps, drop the date prefix, and
+    split name from description on the first colon.
+
+    Featured (Title-Case) events instead isolate their headline with a blank
+    line before the body; head_end (set by the parser) is the number of source
+    lines in that headline. When present, that boundary wins over the first
+    colon, because a featured body often contains stray colons (prices, times).
     """
     joined, lines = join_wrapped(raw)
-    body = strip_leading_prefix(joined)
-    idx = body.find(":")
-    if idx != -1:
-        name = body[:idx].strip(" .,;—–-")
-        desc = body[idx + 1:].strip()
+
+    if head_end and 0 < head_end < len(lines):
+        headline = strip_leading_prefix(" ".join(lines[:head_end]))
+        rest = " ".join(lines[head_end:]).strip()
+        split = split_on_colon(headline)
+        if split:
+            name, head_desc = split
+            desc = (head_desc + " " + rest).strip() if head_desc else rest
+        else:
+            name, desc = headline, rest
         if name:
             return name, desc
+
+    body = strip_leading_prefix(joined)
+    split = split_on_colon(body)
+    if split:
+        return split
     # No usable colon: fall back to the first physical line as the name.
     name = strip_leading_prefix(lines[0]) if lines else ""
     desc = " ".join(lines[1:]).strip() if len(lines) > 1 else ""
@@ -344,7 +371,7 @@ def parse_document(path):
             return
         full = "\n".join(current["source_lines"]).strip()
         current["full_text"] = full
-        name, desc = split_event(full)
+        name, desc = split_event(full, current.get("head_end"))
         current["title"] = name
         current["description"] = desc
         current["ongoing"] = detect_ongoing(full)
@@ -375,6 +402,12 @@ def parse_document(path):
         if rec["blank"]:
             if current is not None and current_saw_link:
                 finalize()
+            elif current is not None and "head_end" not in current and current["source_lines"]:
+                # A blank line inside an event, before any link terminator,
+                # marks the boundary between a featured event's headline and
+                # its body. Lowercase newsletter events never hit this — their
+                # only blank is the terminating one after "link".
+                current["head_end"] = len(current["source_lines"])
             continue
 
         if style_lower == "list paragraph":
