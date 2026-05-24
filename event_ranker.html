@@ -21,9 +21,12 @@
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: var(--ink); background: var(--bg); line-height: 1.45;
-    min-height: 100vh; padding: 24px 16px 80px;
+    min-height: 100vh; padding: 16px 16px 72px;
     -webkit-font-smoothing: antialiased;
   }
+  .header.compact { margin-bottom: 8px; align-items: center; }
+  .header.compact h1 { font-size: 18px; margin: 0; }
+  .header.compact .sub { font-size: 12px; margin-top: 1px; }
   .container { max-width: 880px; margin: 0 auto; }
   h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -.01em; }
   h2 { font-size: 18px; margin: 24px 0 10px; letter-spacing: -.005em; }
@@ -90,11 +93,11 @@
   .weekend-card .count { color: var(--muted); font-size: 13px; margin-top: 4px; }
   .weekend-card .done-mark { color: var(--must-fg); font-size: 13px; margin-top: 6px; }
 
-  .ranking-list { display: flex; flex-direction: column; gap: 8px; }
+  .ranking-list { display: flex; flex-direction: column; gap: 2px; }
   .event-card {
-    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-    padding: 12px; box-shadow: var(--shadow);
-    display: grid; grid-template-columns: 36px 28px 1fr; gap: 10px; align-items: start;
+    background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+    padding: 2px 8px;
+    display: grid; grid-template-columns: 14px 20px 1fr; gap: 7px; align-items: center;
     transition: border-color .12s, box-shadow .12s, opacity .12s;
   }
   .event-card.dragging { opacity: .35; }
@@ -102,35 +105,34 @@
   .event-card.drop-below { border-bottom: 2px solid var(--ink); }
   .drag-handle {
     cursor: grab; user-select: none; touch-action: none;
-    color: var(--muted); font-size: 18px; line-height: 1;
-    height: 100%; display: flex; align-items: center; justify-content: center;
-    padding: 4px;
+    color: #c4c8ce; font-size: 14px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
   }
   .drag-handle:active { cursor: grabbing; }
   .rank-num {
-    background: var(--ink); color: white; width: 28px; height: 28px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600;
+    background: var(--ink); color: white; width: 20px; height: 20px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;
   }
   .event-body { min-width: 0; }
-  .event-title { font-weight: 600; font-size: 15px; margin: 0 0 6px; word-break: break-word; }
-  .event-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13px; color: var(--muted); }
+  .event-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .event-head.clickable { cursor: pointer; }
+  .event-title {
+    font-weight: 500; font-size: 13px; line-height: 1.3; flex: 1; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .event-card.expanded .event-title { white-space: normal; }
   .day-pill {
-    color: white; font-size: 11px; font-weight: 600; letter-spacing: .02em;
-    padding: 2px 8px; border-radius: 999px; text-transform: uppercase;
+    color: white; font-size: 9px; font-weight: 700; letter-spacing: .02em;
+    padding: 1px 6px; border-radius: 999px; text-transform: uppercase; flex-shrink: 0;
   }
   .day-pill.friday   { background: var(--fri); }
   .day-pill.saturday { background: var(--sat); }
   .day-pill.sunday   { background: var(--sun); }
   .ongoing-badge {
-    background: #eef2ff; color: #4338ca; font-size: 11px; font-weight: 600;
-    padding: 2px 8px; border-radius: 999px; letter-spacing: .02em;
+    background: #eef2ff; color: #4338ca; font-size: 9px; font-weight: 700;
+    padding: 1px 6px; border-radius: 999px; letter-spacing: .02em; flex-shrink: 0;
   }
-  .desc-toggle {
-    background: none; border: none; padding: 0; margin-top: 6px; cursor: pointer;
-    color: #2563eb; font: inherit; font-size: 13px;
-  }
-  .desc-toggle:hover { text-decoration: underline; }
-  .description { margin-top: 8px; font-size: 14px; color: #374151; white-space: pre-wrap; }
+  .description { margin: 4px 0 5px; font-size: 12.5px; color: #374151; white-space: pre-wrap; line-height: 1.4; }
 
   .tier-badge {
     font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
@@ -537,10 +539,10 @@ function startRanking(idx) {
 function renderRanking() {
   const wknd = state.data.weekends[state.currentWeekendIndex];
   const wrap = h("div");
-  wrap.appendChild(h("div", { class: "header" }, [
+  wrap.appendChild(h("div", { class: "header compact" }, [
     h("div", null, [
       h("h1", null, "Rank — " + wknd.label),
-      h("div", { class: "sub" }, "Drag to reorder. Top = highest priority.")
+      h("div", { class: "sub" }, "Drag to reorder. Click a row for its description.")
     ]),
     h("div", null, [
       h("button", { class: "btn", onclick: () => goto("weekendSelect") }, "← Back")
@@ -561,26 +563,14 @@ function renderRanking() {
 
 function renderEventCard(ev, rank, draggable, tierKey) {
   const dayCls = dayClass(ev.day_of_week);
-  const meta = h("div", { class: "event-meta" });
-  if (ev.day_of_week) meta.appendChild(h("span", { class: "day-pill " + dayCls }, ev.day_of_week));
-  if (ev.ongoing) meta.appendChild(h("span", { class: "ongoing-badge" }, "ongoing"));
-  if (tierKey) meta.appendChild(h("span", { class: "tier-badge " + tierKey }, TIER_LABEL[tierKey]));
-
-  const body = h("div", { class: "event-body" }, [
-    h("div", { class: "event-title" }, ev.title || "(untitled)"),
-    meta
+  const head = h("div", { class: "event-head" }, [
+    h("span", { class: "event-title" }, ev.title || "(untitled)"),
+    ev.day_of_week ? h("span", { class: "day-pill " + dayCls }, ev.day_of_week.slice(0, 3)) : null,
+    ev.ongoing ? h("span", { class: "ongoing-badge" }, "ongoing") : null,
+    tierKey ? h("span", { class: "tier-badge " + tierKey }, TIER_LABEL[tierKey]) : null
   ]);
 
-  if (ev.description) {
-    const descNode = h("div", { class: "description", style: { display: "none" } }, ev.description);
-    const toggle = h("button", { class: "desc-toggle", onclick: () => {
-      const open = descNode.style.display !== "none";
-      descNode.style.display = open ? "none" : "block";
-      toggle.textContent = open ? "Show description" : "Hide description";
-    }}, "Show description");
-    body.appendChild(toggle);
-    body.appendChild(descNode);
-  }
+  const body = h("div", { class: "event-body" }, [head]);
 
   const card = h("div", {
     class: "event-card",
@@ -592,6 +582,18 @@ function renderEventCard(ev, rank, draggable, tierKey) {
     h("div", { class: "rank-num" }, rank),
     body
   ]);
+
+  if (ev.description) {
+    const descNode = h("div", { class: "description", style: { display: "none" } }, ev.description);
+    body.appendChild(descNode);
+    head.classList.add("clickable");
+    head.setAttribute("title", "Click to show/hide description");
+    head.addEventListener("click", () => {
+      const open = descNode.style.display !== "none";
+      descNode.style.display = open ? "none" : "block";
+      card.classList.toggle("expanded", !open);
+    });
+  }
   return card;
 }
 
@@ -713,7 +715,7 @@ function reorderByCardIds(srcCard, targetCard, before) {
 function renderTiering() {
   const wknd = state.data.weekends[state.currentWeekendIndex];
   const wrap = h("div");
-  wrap.appendChild(h("div", { class: "header" }, [
+  wrap.appendChild(h("div", { class: "header compact" }, [
     h("div", null, [
       h("h1", null, "Tier — " + wknd.label),
       h("div", { class: "sub" }, "Set the cutoff rank for each tier. Anything below Can Go is Cut.")

@@ -55,7 +55,7 @@ function assert(cond, msg) {
   const days = await page.$$eval(".ranking-list .day-pill", pills => pills.map(p => p.textContent));
   let lastIdx = -1;
   let chronologicalOk = true;
-  const order = { Friday: 0, Saturday: 1, Sunday: 2 };
+  const order = { Fri: 0, Sat: 1, Sun: 2 };
   for (const d of days) {
     const idx = order[d];
     if (idx == null) continue;
