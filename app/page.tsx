@@ -33,15 +33,17 @@ export default function LandingPage() {
     <main className="mx-auto max-w-5xl px-6 py-16">
       <header className="mb-16 text-center">
         <div className="mb-3 text-xs uppercase tracking-[0.4em] text-aurora">
-          U.S. careers · no degree required
+          U.S. jobs · no college · $100K now
         </div>
         <h1 className="h-display text-5xl leading-tight text-star sm:text-6xl">
           The Path to <span className="text-ember">100K</span>
         </h1>
         <p className="mx-auto mt-4 max-w-2xl text-white/70">
-          A skill-tree of American jobs that pay over $100,000 a year and don&rsquo;t
-          require a college degree. Answer a few questions and the constellation
-          lights up the paths that are actually open to you.
+          A constellation of American jobs that pay <strong>over $100,000 a year today</strong>,
+          reachable through a certification, license, or paid apprenticeship &mdash; not
+          a college degree. Every star is a role you can be hired into and earning six
+          figures at within about two years. Answer five questions and we&rsquo;ll light
+          up the ones actually open to you.
         </p>
       </header>
 
@@ -70,16 +72,17 @@ export default function LandingPage() {
             )}
           </div>
           <ul className="mt-10 grid gap-4 text-left text-sm text-white/70 sm:grid-cols-3">
-            <Feature title="Real pay floor">
-              Every job on this map clears $100K/year (or the hourly equivalent) in
-              its target tier.
+            <Feature title="No degree, ever">
+              Certs, licenses, and paid apprenticeships only. If it needs a
+              bachelor&rsquo;s or associate&rsquo;s, it&rsquo;s not on this map.
             </Feature>
-            <Feature title="Six branches">
-              Trades, healthcare, tech, transport &amp; energy, sales &amp; business,
-              and public safety.
+            <Feature title="$100K now — not someday">
+              Every role pays $100K on the day you land it, or within ~2 years of
+              starting from zero. Growth paths that take 5+ years are cut.
             </Feature>
-            <Feature title="Filtered to your situation">
-              Willing to move? Felony on record? Cash-strapped? The tree respects it.
+            <Feature title="Upskill or relocate">
+              Two levers. The map is honest about which roles need you to move (union
+              trades, offshore energy, top-metro public safety) versus which travel.
             </Feature>
           </ul>
         </section>

@@ -64,7 +64,7 @@ export default function FilterPanel({
         value={answers.maxUpfrontCostUsd}
         onChange={(v) => set("maxUpfrontCostUsd", v)}
         min={0}
-        max={30000}
+        max={25000}
         step={500}
         format={(v) => (v === 0 ? "$0" : `$${v.toLocaleString()}`)}
       />
@@ -73,7 +73,7 @@ export default function FilterPanel({
         value={answers.maxYears}
         onChange={(v) => set("maxYears", v)}
         min={1}
-        max={10}
+        max={5}
         step={1}
         format={(v) => `${v} yr${v === 1 ? "" : "s"}`}
       />

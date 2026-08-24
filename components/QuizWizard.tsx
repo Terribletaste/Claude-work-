@@ -90,18 +90,18 @@ export default function QuizWizard({ onComplete }: Props) {
           value={answers.maxUpfrontCostUsd}
           onChange={(v) => set("maxUpfrontCostUsd", v)}
           min={0}
-          max={30000}
+          max={25000}
           step={500}
           format={(v) => (v === 0 ? "$0" : `$${v.toLocaleString()}`)}
         />
       )}
       {step === "years" && (
         <QuestionSlider
-          question="How long are you willing to spend getting there?"
+          question="How many years until you want to be earning $100K?"
           value={answers.maxYears}
           onChange={(v) => set("maxYears", v)}
           min={1}
-          max={10}
+          max={5}
           step={1}
           format={(v) => `${v} year${v === 1 ? "" : "s"}`}
         />

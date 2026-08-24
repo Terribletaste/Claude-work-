@@ -4,8 +4,8 @@ export const DEFAULT_ANSWERS: QuizAnswers = {
   willingToRelocate: true,
   criminalRecord: false,
   physicality: "any",
-  maxUpfrontCostUsd: 25000,
-  maxYears: 10,
+  maxUpfrontCostUsd: 15000,
+  maxYears: 2,
 };
 
 export type EligibilityReason = {
@@ -24,7 +24,7 @@ export function nodeEligibility(
     // (so the user can still see them). We flag but keep ok=true.
   }
 
-  if (answers.criminalRecord && !node.feltonEligible) {
+  if (answers.criminalRecord && !node.felonyEligible) {
     reasons.push("Typical licensing rules exclude candidates with a felony record.");
   }
 

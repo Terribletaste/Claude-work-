@@ -207,14 +207,27 @@ function DetailPanel({
       <dl className="grid grid-cols-2 gap-3 text-sm">
         <Stat label="Median pay" value={`$${node.medianSalary.toLocaleString()}`} />
         <Stat
-          label="Time to $100K"
-          value={node.yearsToHundredK === 0 ? "at this tier" : `${node.yearsToHundredK} yrs`}
+          label="Training to hire"
+          value={
+            node.entryMonths === 0
+              ? "none / on-the-job"
+              : node.entryMonths < 12
+                ? `${node.entryMonths} mo`
+                : `${(node.entryMonths / 12).toFixed(node.entryMonths % 12 === 0 ? 0 : 1)} yr`
+          }
+        />
+        <Stat
+          label="At $100K in"
+          value={
+            node.yearsToHundredK === 0
+              ? "day one"
+              : `${node.yearsToHundredK} yr${node.yearsToHundredK === 1 ? "" : "s"}`
+          }
         />
         <Stat
           label="Upfront cost"
           value={node.upfrontCostUsd === 0 ? "$0" : `~$${node.upfrontCostUsd.toLocaleString()}`}
         />
-        <Stat label="Physicality" value={node.physicality} />
       </dl>
 
       <div>
@@ -289,15 +302,15 @@ function branchLabel(b: CareerNode["branch"]): string {
   switch (b) {
     case "trades":
       return "Skilled Trades";
-    case "healthcare":
-      return "Healthcare";
-    case "tech":
-      return "Tech";
-    case "transport-energy":
-      return "Transport & Energy";
-    case "sales-business":
-      return "Sales & Business";
+    case "energy":
+      return "Energy";
+    case "transport":
+      return "Transport";
     case "public-safety":
       return "Public Safety";
+    case "sales-business":
+      return "Sales & Business";
+    case "tech":
+      return "Tech";
   }
 }

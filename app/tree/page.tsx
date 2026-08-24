@@ -58,8 +58,10 @@ export default function TreePage() {
       </div>
 
       <footer className="mt-10 text-center text-xs text-white/40">
-        Salary and timeline estimates are directional (BLS, industry surveys). Job
-        listings shown are placeholders while our ingestion agent comes online.
+        Every capstone is a $100K+ role reachable with no college degree in
+        roughly two years or less. Salary and timeline estimates are directional
+        (BLS, union scale, industry surveys). Job listings are placeholders
+        while the ingestion agent comes online.
       </footer>
     </main>
   );
