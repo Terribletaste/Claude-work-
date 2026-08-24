@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+
+# Uber receipts downloader
+uber_receipts/.uber_profile/
+uber_receipts/receipts/
+uber_receipts/manifest.jsonl
