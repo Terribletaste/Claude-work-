@@ -1,0 +1,55 @@
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@400;500;600&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background: radial-gradient(ellipse at top, #0a1224 0%, #05070d 55%, #03040a 100%);
+  color: #e8f1ff;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  min-height: 100%;
+}
+
+.starfield {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(255, 255, 255, 0.7), transparent 60%),
+    radial-gradient(1px 1px at 70% 20%, rgba(255, 255, 255, 0.5), transparent 60%),
+    radial-gradient(1.5px 1.5px at 40% 70%, rgba(255, 255, 255, 0.5), transparent 60%),
+    radial-gradient(1px 1px at 85% 60%, rgba(255, 255, 255, 0.6), transparent 60%),
+    radial-gradient(1px 1px at 10% 80%, rgba(255, 255, 255, 0.5), transparent 60%),
+    radial-gradient(1.5px 1.5px at 55% 45%, rgba(255, 255, 255, 0.4), transparent 60%),
+    radial-gradient(1px 1px at 30% 55%, rgba(255, 255, 255, 0.5), transparent 60%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.node-pulse {
+  animation: pulse 3.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+.constellation-line {
+  stroke: rgba(124, 215, 255, 0.35);
+  stroke-width: 1;
+}
+.constellation-line.active {
+  stroke: rgba(244, 194, 107, 0.8);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 4px rgba(244, 194, 107, 0.6));
+}
+.constellation-line.locked {
+  stroke: rgba(90, 100, 120, 0.25);
+  stroke-dasharray: 3 4;
+}
+
+.h-display {
+  font-family: "Cinzel", ui-serif, Georgia, serif;
+  letter-spacing: 0.04em;
+}
